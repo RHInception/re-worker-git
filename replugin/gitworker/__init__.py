@@ -17,6 +17,11 @@
 Git worker.
 """
 
+import git
+import os
+import shutil
+import uuid
+
 from reworker.worker import Worker
 
 
@@ -33,7 +38,59 @@ class GitWorker(Worker):
     """
 
     #: allowed subcommands
-    subcommands = ('Merge', 'GitFix')
+    subcommands = ('CherryPick', 'GitFix')
+
+    # Subcommand methods
+    def cherry_pick(self, body, output):
+        # Get neede dynamic variables
+        commits = body.get('dynamic', {}).get('commits', [])
+        repo = body.get('dynamic', {}).get('repo', [])
+        self.app_logger.info(
+            'Attempting to cherry pick the following commits on %s: %s' % (
+                repo, ",".join(commits)))
+
+        # Create a workspace
+        workspace = self._create_workspace()
+        # Create a git command wrapper
+        gitcmd = git.cmd.Git(workspace)
+
+        # Clone
+        # gitcmd.clone(repo)
+
+        # Remove the workspace after work is done
+        self._delete_workspace(workspace)
+
+        self.app_logger.info('Cherry picking succeeded.')
+        return {'status': 'completed', 'data': {}}
+
+    def git_fix(self, body, output):
+        return {'status': 'completed', 'data': {}}
+
+    def _create_workspace(self):
+        """
+        Creates a workspace to clone in.
+        """
+        workspace = os.path.sep.join([
+            self._config['workspace_dir'],
+            str(uuid.uuid4())])
+
+        self.app_logger.debug('Trying to make %s.' % workspace)
+        os.makedirs(workspace)
+        self.app_logger.info('Created workspace at %s.' % workspace)
+        return workspace
+
+    def _delete_workspace(self, workspace):
+        """
+        Deletes a workspace after worker is done.
+        """
+        self.app_logger.debug('Attempting to delete workspace %s.' % workspace)
+        if workspace.startswith(self._config['workspace_dir']):
+            shutil.rmtree(workspace)
+            self.app_logger.info('Deleted workspace at %s.' % workspace)
+        else:
+            self.app_logger.warn(
+                'Worksapce %s is not inside %s. Not removing.' % (
+                    workspace, self._config['workspace_dir']))
 
     def process(self, channel, basic_deliver, properties, body, output):
         """
@@ -55,11 +112,11 @@ class GitWorker(Worker):
                 raise GitWorkerError(
                     'No valid subcommand given. Nothing to do!')
 
-            if subcommand == 'Merge':
+            if subcommand == 'CherryPick':
                 self.app_logger.info(
                     'Executing subcommand %s for correlation_id %s' % (
                         subcommand, corr_id))
-                result = self.merge(body, output)
+                result = self.cherry_pick(body, output)
             elif subcommand == 'GitFix':
                 self.app_logger.info(
                     'Executing subcommand %s for correlation_id %s' % (

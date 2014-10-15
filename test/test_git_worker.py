@@ -17,6 +17,7 @@ Unittests.
 """
 
 import pika
+import os
 import mock
 
 from contextlib import nested
@@ -77,3 +78,146 @@ class TestGitWorker(TestCase):
         self.logger.reset_mock()
         self.app_logger.reset_mock()
         self.connection.reset_mock()
+
+    def test__create_workspace_and__delete_workspace(self):
+        """
+        Verifies that creation and deletion of a workspace happens as it should.
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.gitworker.GitWorker.notify'),
+                mock.patch('replugin.gitworker.GitWorker.send')):
+
+            worker = gitworker.GitWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+            workspace = worker._create_workspace()
+
+            # Verify it exists as inside the workspace dir
+            assert workspace.startswith(worker._config['workspace_dir'])
+            assert os.path.isdir(workspace)
+
+            # There should be no return on delete if all is well
+            assert worker._delete_workspace(workspace) is None
+            assert os.path.isdir(workspace) is False
+
+
+    def test_bad_command(self):
+        """
+        If a bad command is sent the worker should fail.
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.gitworker.GitWorker.notify'),
+                mock.patch('replugin.gitworker.GitWorker.send')):
+
+            worker = gitworker.GitWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "git",
+                    "subcommand": "this is not a thing",
+                },
+                "dynamic": {
+                    "repo": "https://127.0.0.1/somerepo.git",
+                }
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            assert self.app_logger.error.call_count == 1
+            assert worker.send.call_args[0][2]['status'] == 'failed'
+
+    def test_cherrypick(self):
+        """
+        Verifies cherrypick command works as expected.
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.gitworker.GitWorker.notify'),
+                mock.patch('replugin.gitworker.GitWorker.send')):
+
+            worker = gitworker.GitWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "git",
+                    "subcommand": "CherryPick",
+                },
+                "dynamic": {
+                    "repo": "https://127.0.0.1/somerepo.git",
+                }
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            assert self.app_logger.error.call_count == 0
+            assert worker.send.call_args[0][2]['status'] == 'completed'
+            assert worker.send.call_args[0][2]['data'] == {}
+
+    def test_gitfix(self):
+        """
+        Verifies gitfix command works as expected.
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.gitworker.GitWorker.notify'),
+                mock.patch('replugin.gitworker.GitWorker.send')):
+
+            worker = gitworker.GitWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "git",
+                    "subcommand": "GitFix",
+                },
+                "dynamic": {
+                    "repo": "https://127.0.0.1/somerepo.git",
+                }
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            assert self.app_logger.error.call_count == 0
+            assert worker.send.call_args[0][2]['status'] == 'completed'
+            assert worker.send.call_args[0][2]['data'] == {}
