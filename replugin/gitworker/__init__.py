@@ -20,6 +20,7 @@ Git worker.
 import git
 import os
 import shutil
+import subprocess
 import uuid
 
 from reworker.worker import Worker
@@ -38,33 +39,69 @@ class GitWorker(Worker):
     """
 
     #: allowed subcommands
-    subcommands = ('CherryPick', 'GitFix')
+    subcommands = ('CherryPickMerge', )
 
     # Subcommand methods
-    def cherry_pick(self, body, output):
+    def cherry_pick_merge(self, body, output):
         # Get neede dynamic variables
-        commits = body.get('dynamic', {}).get('commits', [])
-        repo = body.get('dynamic', {}).get('repo', [])
-        self.app_logger.info(
-            'Attempting to cherry pick the following commits on %s: %s' % (
-                repo, ",".join(commits)))
+        dynamic = body.get('dynamic', {})
 
-        # Create a workspace
-        workspace = self._create_workspace()
-        # Create a git command wrapper
-        gitcmd = git.cmd.Git(workspace)
+        try:
+            commits = dynamic['commits']
+            from_branch = dynamic['from_branch']
+            to_branch = dynamic['to_branch']
+            temp_branch = dynamic.get('temp_branch', 'mergebranch')
+            run_git_fix = dynamic.get('run_git_fix', False)
+            repo = dynamic['repo']
 
-        # Clone
-        # gitcmd.clone(repo)
+            self.app_logger.info(
+                'Attempting to cherry pick the following commits on %s: %s' % (
+                    repo, ",".join(commits)))
 
-        # Remove the workspace after work is done
-        self._delete_workspace(workspace)
+            # Create a workspace
+            workspace = self._create_workspace()
+            # result_data is where we store the results to return to the bus
+            result_data = {
+                "cherry_pick": [],
+                "git_fix": False
+            }
+            # Create a git command wrapper
+            gitcmd = git.cmd.Git(workspace)
 
-        self.app_logger.info('Cherry picking succeeded.')
-        return {'status': 'completed', 'data': {}}
+            # Clone
+            # gitcmd.clone(repo, workspace)
+            # gitcmd.checkout(temp_branch)
+            for commit in commits:
+                # gitcmd.cherry_pick(commit)
+                result_data['cherry_pick'].append(commit)
+                pass
+            # gitcmd.checkout(to_branch)
+            # gitcmd.merge(temp_branch, squash=True)
+            # gitcmd.commit(m="Squash message here")
+            # commit ?= gitcmd.push("origin", to_branch)
+            result_data['commit'] = ""
+            result_data['branch'] = to_branch
+            if run_git_fix is True:
+                self.app_logger.info('Executing git-fix')
+                self.app_logger.debug('Git-fix run: ["%s", ???]' % (
+                    self._config['git_fix_bin']))
+                # git_fix = subprocess.Popen([
+                #    self._config['git_fix_bin'], ???],
+                #    shell=False,
+                #    cwd=workspace,
+                #    stdout=subprocess.PIPE,
+                #    stderr=subprocess.PIPE)
+                result_data['commit'] = "UPDATED COMMIT HERE"
+                result_data['git_fix'] = True
+                self.app_logger.info('git-fix run finished')
 
-    def git_fix(self, body, output):
-        return {'status': 'completed', 'data': {}}
+            # Remove the workspace after work is done
+            self._delete_workspace(workspace)
+
+            self.app_logger.info('Cherry picking succeeded.')
+            return {'status': 'completed', 'data': result_data}
+        except KeyError, ke:
+            raise GitWorkerError('Missing input %s' % ke)
 
     def _create_workspace(self):
         """
@@ -112,11 +149,11 @@ class GitWorker(Worker):
                 raise GitWorkerError(
                     'No valid subcommand given. Nothing to do!')
 
-            if subcommand == 'CherryPick':
+            if subcommand == 'CherryPickMerge':
                 self.app_logger.info(
                     'Executing subcommand %s for correlation_id %s' % (
                         subcommand, corr_id))
-                result = self.cherry_pick(body, output)
+                result = self.cherry_pick_merge(body, output)
             elif subcommand == 'GitFix':
                 self.app_logger.info(
                     'Executing subcommand %s for correlation_id %s' % (

@@ -144,48 +144,9 @@ class TestGitWorker(TestCase):
             assert self.app_logger.error.call_count == 1
             assert worker.send.call_args[0][2]['status'] == 'failed'
 
-    def test_cherrypick(self):
+    def test_cherrypickmerge(self):
         """
-        Verifies cherrypick command works as expected.
-        """
-        with nested(
-                mock.patch('pika.SelectConnection'),
-                mock.patch('replugin.gitworker.GitWorker.notify'),
-                mock.patch('replugin.gitworker.GitWorker.send')):
-
-            worker = gitworker.GitWorker(
-                MQ_CONF,
-                logger=self.app_logger,
-                config_file='conf/example.json')
-
-            worker._on_open(self.connection)
-            worker._on_channel_open(self.channel)
-
-            body = {
-                "parameters": {
-                    "command": "git",
-                    "subcommand": "CherryPick",
-                },
-                "dynamic": {
-                    "repo": "https://127.0.0.1/somerepo.git",
-                }
-            }
-
-            # Execute the call
-            worker.process(
-                self.channel,
-                self.basic_deliver,
-                self.properties,
-                body,
-                self.logger)
-
-            assert self.app_logger.error.call_count == 0
-            assert worker.send.call_args[0][2]['status'] == 'completed'
-            assert worker.send.call_args[0][2]['data'] == {}
-
-    def test_gitfix(self):
-        """
-        Verifies gitfix command works as expected.
+        Verifies cherrypickmerge command works as expected.
         """
         with nested(
                 mock.patch('pika.SelectConnection'),
@@ -203,9 +164,12 @@ class TestGitWorker(TestCase):
             body = {
                 "parameters": {
                     "command": "git",
-                    "subcommand": "GitFix",
+                    "subcommand": "CherryPickMerge",
                 },
                 "dynamic": {
+                    "commits": ['1', '2'],
+                    "from_branch": "from",
+                    "to_branch": "to",
                     "repo": "https://127.0.0.1/somerepo.git",
                 }
             }
@@ -218,6 +182,63 @@ class TestGitWorker(TestCase):
                 body,
                 self.logger)
 
+            expected_data = {
+                "cherry_pick": ["1", "2"],
+                "git_fix": False,
+                "branch": "to",
+                "commit": ""
+            }
+
             assert self.app_logger.error.call_count == 0
             assert worker.send.call_args[0][2]['status'] == 'completed'
-            assert worker.send.call_args[0][2]['data'] == {}
+            assert worker.send.call_args[0][2]['data'] == expected_data
+
+    def test_cherrypickmerge_with_git_fix(self):
+        """
+        Verifies cherrypickmerge command works when run_git_fix is True
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.gitworker.GitWorker.notify'),
+                mock.patch('replugin.gitworker.GitWorker.send')):
+
+            worker = gitworker.GitWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "git",
+                    "subcommand": "CherryPickMerge",
+                },
+                "dynamic": {
+                    "commits": ['1', '2'],
+                    "from_branch": "from",
+                    "to_branch": "to",
+                    "repo": "https://127.0.0.1/somerepo.git",
+                    "run_git_fix": True
+                }
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            expected_data = {
+                "cherry_pick": ["1", "2"],
+                "git_fix": True,
+                "branch": "to",
+                "commit": "UPDATED COMMIT HERE"
+            }
+
+            assert self.app_logger.error.call_count == 0
+            assert worker.send.call_args[0][2]['status'] == 'completed'
+            assert worker.send.call_args[0][2]['data'] == expected_data
