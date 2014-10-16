@@ -16,6 +16,7 @@
 Unittests.
 """
 
+import git
 import pika
 import os
 import mock
@@ -236,7 +237,7 @@ class TestGitWorker(TestCase):
                 "cherry_pick": ["1", "2"],
                 "git_fix": True,
                 "branch": "to",
-                "commit": "UPDATED COMMIT HERE"
+                "commit": ""
             }
 
             assert self.app_logger.error.call_count == 0

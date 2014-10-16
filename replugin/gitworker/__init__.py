@@ -70,16 +70,17 @@ class GitWorker(Worker):
 
             # Clone
             # gitcmd.clone(repo, workspace)
-            # gitcmd.checkout(temp_branch)
+            # local_repo = git.Repo(workspace)
+            # local_repo.git.checkout(temp_branch)
             for commit in commits:
-                # gitcmd.cherry_pick(commit)
+                # local_repo.git.cherry_pick(commit)
                 result_data['cherry_pick'].append(commit)
                 pass
-            # gitcmd.checkout(to_branch)
-            # gitcmd.merge(temp_branch, squash=True)
-            # gitcmd.commit(m="Squash message here")
-            # commit ?= gitcmd.push("origin", to_branch)
-            result_data['commit'] = ""
+            # local_repo.git.checkout(to_branch)
+            # local_repo.git.merge(temp_branch, squash=True)
+            # local_repo.git.commit(m="Squash message here")
+            # local_repo.git.push("origin", to_branch)
+            result_data['commit'] = ""  # local_repo.commits()[0].id
             result_data['branch'] = to_branch
             if run_git_fix is True:
                 self.app_logger.info('Executing git-fix')
@@ -91,7 +92,7 @@ class GitWorker(Worker):
                 #    cwd=workspace,
                 #    stdout=subprocess.PIPE,
                 #    stderr=subprocess.PIPE)
-                result_data['commit'] = "UPDATED COMMIT HERE"
+                result_data['commit'] = ""  # local_repo.commits()[0].id
                 result_data['git_fix'] = True
                 self.app_logger.info('git-fix run finished')
 
