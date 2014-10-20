@@ -19,6 +19,7 @@ Unittests.
 import git
 import pika
 import os
+import subprocess
 import mock
 
 from contextlib import nested
@@ -152,7 +153,9 @@ class TestGitWorker(TestCase):
         with nested(
                 mock.patch('pika.SelectConnection'),
                 mock.patch('replugin.gitworker.GitWorker.notify'),
-                mock.patch('replugin.gitworker.GitWorker.send')):
+                mock.patch('replugin.gitworker.GitWorker.send'),
+                mock.patch('replugin.gitworker.subprocess'),
+                mock.patch('replugin.gitworker.git')) as (_, _, _, _sp, _git):
 
             worker = gitworker.GitWorker(
                 MQ_CONF,
@@ -175,6 +178,7 @@ class TestGitWorker(TestCase):
                 }
             }
 
+            _git.Repo().commits.return_value = [mock.MagicMock(id='0987654321')]
             # Execute the call
             worker.process(
                 self.channel,
@@ -185,14 +189,32 @@ class TestGitWorker(TestCase):
 
             expected_data = {
                 "cherry_pick": ["1", "2"],
-                "git_fix": False,
                 "branch": "to",
-                "commit": ""
+                "commit": "0987654321"
             }
+
+            # There should be a clone
+            _git.cmd.Git().clone.assert_called_once_with(
+                "https://127.0.0.1/somerepo.git",
+                mock.ANY)  # we can't tell what the workspace will bea
+            # There should be 2 checkouts
+            assert _git.Repo().git.checkout.call_count == 2
+            # There should be a squash merge
+            _git.Repo().git.merge.assert_called_once_with(
+                'mergebranch', squash=True)
+            # AND a commit
+            _git.Repo().git.commit.assert_called_once()
+            # AND push
+            _git.Repo().git.push.assert_called_once()
+
+            # we should have no subprocess calls
+            assert _sp.Popen.call_count == 0
 
             assert self.app_logger.error.call_count == 0
             assert worker.send.call_args[0][2]['status'] == 'completed'
+            print worker.send.call_args[0][2]['data'], expected_data
             assert worker.send.call_args[0][2]['data'] == expected_data
+
 
     def test_cherrypickmerge_with_git_fix(self):
         """
@@ -201,7 +223,9 @@ class TestGitWorker(TestCase):
         with nested(
                 mock.patch('pika.SelectConnection'),
                 mock.patch('replugin.gitworker.GitWorker.notify'),
-                mock.patch('replugin.gitworker.GitWorker.send')):
+                mock.patch('replugin.gitworker.GitWorker.send'),
+                mock.patch('replugin.gitworker.subprocess'),
+                mock.patch('replugin.gitworker.git')) as (_, _, _, _sp, _git):
 
             worker = gitworker.GitWorker(
                 MQ_CONF,
@@ -221,10 +245,18 @@ class TestGitWorker(TestCase):
                     "from_branch": "from",
                     "to_branch": "to",
                     "repo": "https://127.0.0.1/somerepo.git",
-                    "run_git_fix": True
+                    "run_scripts": ['git-fix']
                 }
             }
 
+            # Side effect to make 2 different returns for commits
+            side_effect_results = [
+                [mock.MagicMock(id='0987654321')],
+                [mock.MagicMock(id='1234567890')],
+             ]
+
+            _git.Repo().commits.side_effect = lambda: side_effect_results.pop(0)
+            _sp.Popen().returncode = 0
             # Execute the call
             worker.process(
                 self.channel,
@@ -235,11 +267,27 @@ class TestGitWorker(TestCase):
 
             expected_data = {
                 "cherry_pick": ["1", "2"],
-                "git_fix": True,
                 "branch": "to",
-                "commit": ""
+                "commit": "1234567890"  # second return from commits
             }
 
+            # There should be a clone
+            _git.cmd.Git().clone.assert_called_once_with(
+                "https://127.0.0.1/somerepo.git",
+                mock.ANY)  # we can't tell what the workspace will bea
+            # There should be 2 checkouts
+            assert _git.Repo().git.checkout.call_count == 2
+            # There should be a squash merge
+            _git.Repo().git.merge.assert_called_once_with(
+                'mergebranch', squash=True)
+            # AND a commit
+            _git.Repo().git.commit.assert_called_once()
+            # AND push
+            _git.Repo().git.push.assert_called_once()
+
             assert self.app_logger.error.call_count == 0
+            # we should have a subprocess called ONCE
+            _sp.Popen.assert_called_once()
+            _sp.Popen.call_args[0][0] == ['/usr/bin/git-fix']
             assert worker.send.call_args[0][2]['status'] == 'completed'
             assert worker.send.call_args[0][2]['data'] == expected_data

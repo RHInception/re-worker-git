@@ -1,4 +1,6 @@
 {
     "workspace_dir": "/tmp/",
-    "git_fix_bin": "/usr/bin/git-fix"
+    "scripts": {
+        "git-fix": "/usr/bin/git-fix"
+    }
 }

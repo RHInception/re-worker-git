@@ -18,6 +18,7 @@ Git worker.
 """
 
 import git
+import time
 import os
 import shutil
 import subprocess
@@ -40,18 +41,23 @@ class GitWorker(Worker):
 
     #: allowed subcommands
     subcommands = ('CherryPickMerge', )
+    # Additional dynamic arguments are permitted, they are optional
+    dynamic = [
+        'repo',
+        'to_branch',
+        'commits'
+    ]
 
     # Subcommand methods
-    def cherry_pick_merge(self, body, output):
+    def cherry_pick_merge(self, body, corr_id, output):
         # Get neede dynamic variables
         dynamic = body.get('dynamic', {})
 
         try:
             commits = dynamic['commits']
-            from_branch = dynamic['from_branch']
             to_branch = dynamic['to_branch']
             temp_branch = dynamic.get('temp_branch', 'mergebranch')
-            run_git_fix = dynamic.get('run_git_fix', False)
+            run_scripts = dynamic.get('run_scripts', [])
             repo = dynamic['repo']
 
             self.app_logger.info(
@@ -63,46 +69,70 @@ class GitWorker(Worker):
             # result_data is where we store the results to return to the bus
             result_data = {
                 "cherry_pick": [],
-                "git_fix": False
             }
             # Create a git command wrapper
             gitcmd = git.cmd.Git(workspace)
 
             # Clone
-            # gitcmd.clone(repo, workspace)
-            # local_repo = git.Repo(workspace)
-            # local_repo.git.checkout(temp_branch)
+            output.info('Cloning %s' % repo)
+            gitcmd.clone(repo, workspace)
+            local_repo = git.Repo(workspace)
+            output.info('Checking out branch %s for work' % temp_branch)
+            local_repo.git.checkout(b=temp_branch)
             for commit in commits:
-                # local_repo.git.cherry_pick(commit)
+                self.app_logger.info("Going to cherry pick %s now" % commit)
+                local_repo.git.cherry_pick(commit)
                 result_data['cherry_pick'].append(commit)
-                pass
-            # local_repo.git.checkout(to_branch)
-            # local_repo.git.merge(temp_branch, squash=True)
-            # local_repo.git.commit(m="Squash message here")
-            # local_repo.git.push("origin", to_branch)
-            result_data['commit'] = ""  # local_repo.commits()[0].id
-            result_data['branch'] = to_branch
-            if run_git_fix is True:
-                self.app_logger.info('Executing git-fix')
-                self.app_logger.debug('Git-fix run: ["%s", ???]' % (
-                    self._config['git_fix_bin']))
-                # git_fix = subprocess.Popen([
-                #    self._config['git_fix_bin'], ???],
-                #    shell=False,
-                #    cwd=workspace,
-                #    stdout=subprocess.PIPE,
-                #    stderr=subprocess.PIPE)
-                result_data['commit'] = ""  # local_repo.commits()[0].id
-                result_data['git_fix'] = True
-                self.app_logger.info('git-fix run finished')
+                output.info('Cherry picked %s' % commit)
+                self.app_logger.info("Cherry picked %s successfully" % commit)
 
-            # Remove the workspace after work is done
-            self._delete_workspace(workspace)
+            local_repo.git.checkout(to_branch)
+            local_repo.git.merge(temp_branch, squash=True)
+            local_repo.git.commit(m="Commit for squash-merge of release: %s" % corr_id)
+
+            result_data['commit'] = local_repo.commits()[0].id
+            result_data['branch'] = to_branch
+            if run_scripts:
+                for script in run_scripts:
+                    try:
+                        self._config['scripts'][script]
+                        self.app_logger.info('Executing ')
+                        self.app_logger.debug('Running: ["%s"]' % (
+                            script))
+                        script_process = subprocess.Popen([
+                            self._config['scripts'][script]],
+                            shell=False,
+                            cwd=workspace,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
+                        # Give a little time ...
+                        time.sleep(2)
+                        # If we get a non 0 then it's a failure.
+                        if script_process.returncode != 0:
+                            # stop executing and bail out
+                            raise GitWorkerError(str(script_process.stdout.read()))
+                        result_data['commit'] = local_repo.commits()[0].id
+                        self.app_logger.info('%s run finished' % script)
+                        output.info('%s run finished' % script)
+                    except KeyError, ke:
+                        self.app_logger.warn(
+                            '%s is not in the allowed scripts list. Skipped.')
+                        output.warn(
+                            '%s is not in the allowed scripts list. Skipped.')
+
+            local_repo.git.push("origin", to_branch)
+            # Remove the workspace after work is done (unless
+            # keep_workspace is True)
+            if not dynamic.get('keep_workspace', False):
+                self._delete_workspace(workspace)
+                output.info('Cleaning up workspace.')
 
             self.app_logger.info('Cherry picking succeeded.')
             return {'status': 'completed', 'data': result_data}
         except KeyError, ke:
             raise GitWorkerError('Missing input %s' % ke)
+        except git.errors.GitCommandError, gce:
+            raise GitWorkerError('Git error: %s' % gce)
 
     def _create_workspace(self):
         """
@@ -114,7 +144,7 @@ class GitWorker(Worker):
 
         self.app_logger.debug('Trying to make %s.' % workspace)
         os.makedirs(workspace)
-        self.app_logger.info('Created workspace at %s.' % workspace)
+        self.app_logger.info('Created workspace at %s' % workspace)
         return workspace
 
     def _delete_workspace(self, workspace):
@@ -124,7 +154,7 @@ class GitWorker(Worker):
         self.app_logger.debug('Attempting to delete workspace %s.' % workspace)
         if workspace.startswith(self._config['workspace_dir']):
             shutil.rmtree(workspace)
-            self.app_logger.info('Deleted workspace at %s.' % workspace)
+            self.app_logger.info('Deleted workspace at %s' % workspace)
         else:
             self.app_logger.warn(
                 'Worksapce %s is not inside %s. Not removing.' % (
@@ -154,12 +184,7 @@ class GitWorker(Worker):
                 self.app_logger.info(
                     'Executing subcommand %s for correlation_id %s' % (
                         subcommand, corr_id))
-                result = self.cherry_pick_merge(body, output)
-            elif subcommand == 'GitFix':
-                self.app_logger.info(
-                    'Executing subcommand %s for correlation_id %s' % (
-                        subcommand, corr_id))
-                result = self.git_fix(body, output)
+                result = self.cherry_pick_merge(body, corr_id, output)
             else:
                 self.app_logger.warn(
                     'Could not the implementation of subcommand %s' % (
