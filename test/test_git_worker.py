@@ -169,8 +169,6 @@ class TestGitWorker(TestCase):
                 "parameters": {
                     "command": "git",
                     "subcommand": "CherryPickMerge",
-                },
-                "dynamic": {
                     "commits": ['1', '2'],
                     "from_branch": "from",
                     "to_branch": "to",
@@ -239,8 +237,6 @@ class TestGitWorker(TestCase):
                 "parameters": {
                     "command": "git",
                     "subcommand": "CherryPickMerge",
-                },
-                "dynamic": {
                     "commits": ['1', '2'],
                     "from_branch": "from",
                     "to_branch": "to",

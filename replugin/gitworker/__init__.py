@@ -41,24 +41,19 @@ class GitWorker(Worker):
 
     #: allowed subcommands
     subcommands = ('CherryPickMerge', )
-    # Additional dynamic arguments are permitted, they are optional
-    dynamic = [
-        'repo',
-        'to_branch',
-        'commits'
-    ]
+    dynamic = []
 
     # Subcommand methods
     def cherry_pick_merge(self, body, corr_id, output):
-        # Get neede dynamic variables
-        dynamic = body.get('dynamic', {})
+        # Get neede ic variables
+        params = body.get('parameters', {})
 
         try:
-            commits = dynamic['commits']
-            to_branch = dynamic['to_branch']
-            temp_branch = dynamic.get('temp_branch', 'mergebranch')
-            run_scripts = dynamic.get('run_scripts', [])
-            repo = dynamic['repo']
+            commits = params['commits']
+            to_branch = params['to_branch']
+            temp_branch = params.get('temp_branch', 'mergebranch')
+            run_scripts = params.get('run_scripts', [])
+            repo = params['repo']
 
             self.app_logger.info(
                 'Attempting to cherry pick the following commits on %s: %s' % (
@@ -86,7 +81,7 @@ class GitWorker(Worker):
                 output.info('Cherry picked %s' % commit)
                 self.app_logger.info("Cherry picked %s successfully" % commit)
 
-            local_repo.git.checkout(to_branch)
+            local_repo.git.checkout(b=to_branch)
             local_repo.git.merge(temp_branch, squash=True)
             local_repo.git.commit(m="Commit for squash-merge of release: %s" % corr_id)
 
@@ -123,7 +118,7 @@ class GitWorker(Worker):
             local_repo.git.push("origin", to_branch)
             # Remove the workspace after work is done (unless
             # keep_workspace is True)
-            if not dynamic.get('keep_workspace', False):
+            if not params.get('keep_workspace', False):
                 self._delete_workspace(workspace)
                 output.info('Cleaning up workspace.')
 
