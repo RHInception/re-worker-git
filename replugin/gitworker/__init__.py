@@ -81,11 +81,13 @@ class GitWorker(Worker):
                 output.info('Cherry picked %s' % commit)
                 self.app_logger.info("Cherry picked %s successfully" % commit)
 
-            local_repo.git.checkout(b=to_branch)
+            local_repo.git.fetch('origin', to_branch)
+            local_repo.git.checkout(to_branch)
+            local_repo.git.pull('origin', to_branch)
             local_repo.git.merge(temp_branch, squash=True)
             local_repo.git.commit(m="Commit for squash-merge of release: %s" % corr_id)
 
-            result_data['commit'] = local_repo.commits()[0].id
+            result_data['commit'] = local_repo.commit().hexsha
             result_data['branch'] = to_branch
             if run_scripts:
                 for script in run_scripts:
@@ -106,7 +108,7 @@ class GitWorker(Worker):
                         if script_process.returncode != 0:
                             # stop executing and bail out
                             raise GitWorkerError(str(script_process.stdout.read()))
-                        result_data['commit'] = local_repo.commits()[0].id
+                        result_data['commit'] = local_repo.commit().hexsha
                         self.app_logger.info('%s run finished' % script)
                         output.info('%s run finished' % script)
                     except KeyError, ke:
@@ -115,7 +117,7 @@ class GitWorker(Worker):
                         output.warn(
                             '%s is not in the allowed scripts list. Skipped.')
 
-            local_repo.git.push("origin", to_branch)
+            local_repo.git.push("origin", to_branch, force=True)
             # Remove the workspace after work is done (unless
             # keep_workspace is True)
             if not params.get('keep_workspace', False):
@@ -126,7 +128,7 @@ class GitWorker(Worker):
             return {'status': 'completed', 'data': result_data}
         except KeyError, ke:
             raise GitWorkerError('Missing input %s' % ke)
-        except git.errors.GitCommandError, gce:
+        except git.GitCommandError, gce:
             raise GitWorkerError('Git error: %s' % gce)
 
     def _create_workspace(self):

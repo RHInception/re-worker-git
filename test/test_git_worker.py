@@ -176,7 +176,7 @@ class TestGitWorker(TestCase):
                 }
             }
 
-            _git.Repo().commits.return_value = [mock.MagicMock(id='0987654321')]
+            _git.Repo().commit.return_value = mock.MagicMock(hexsha='0987654321')
             # Execute the call
             worker.process(
                 self.channel,
@@ -247,11 +247,11 @@ class TestGitWorker(TestCase):
 
             # Side effect to make 2 different returns for commits
             side_effect_results = [
-                [mock.MagicMock(id='0987654321')],
-                [mock.MagicMock(id='1234567890')],
+                mock.MagicMock(hexsha='0987654321'),
+                mock.MagicMock(hexsha='1234567890'),
              ]
 
-            _git.Repo().commits.side_effect = lambda: side_effect_results.pop(0)
+            _git.Repo().commit.side_effect = lambda: side_effect_results.pop(0)
             _sp.Popen().returncode = 0
             # Execute the call
             worker.process(
