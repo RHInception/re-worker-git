@@ -9,8 +9,8 @@
 
 Name: re-worker-git
 Summary: Basic git worker for Release Engine
-Version: 0.0.1
-Release: 2%{?dist}
+Version: 0.0.2
+Release: 1%{?dist}
 
 Group: Applications/System
 License: AGPLv3
@@ -42,5 +42,8 @@ history fixing.
 
 
 %changelog
+* Tue Oct 21 2014 Steve Milner <stevem@gnulinux.net> - 0.0.2-1
+- Bug fixes.
+
 * Wed Oct 15 2014 Steve Milner <stevem@gnulinux.net> - 0.0.1-1
 - Initial spec
