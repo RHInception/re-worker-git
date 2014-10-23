@@ -10,7 +10,7 @@
 Name: re-worker-git
 Summary: Basic git worker for Release Engine
 Version: 0.0.2
-Release: 2%{?dist}
+Release: 3%{?dist}
 
 Group: Applications/System
 License: AGPLv3
@@ -42,6 +42,9 @@ history fixing.
 
 
 %changelog
+* Thu Oct 23 2014 Tim Bielawa <tbielawa@redhat.com> - 0.0.2-3
+- Tell the FSM when we start
+
 * Tue Oct 21 2014 Steve Milner <stevem@gnulinux.net> - 0.0.2-2
 - More bug fixes.
 

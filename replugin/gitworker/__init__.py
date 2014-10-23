@@ -181,6 +181,13 @@ class GitWorker(Worker):
                 self.app_logger.info(
                     'Executing subcommand %s for correlation_id %s' % (
                         subcommand, corr_id))
+                # Tell the FSM that we're starting now
+                self.send(
+                    properties.reply_to,
+                    corr_id,
+                    {'status': 'started'},
+                    exchange=''
+                )
                 result = self.cherry_pick_merge(body, corr_id, output)
             else:
                 self.app_logger.warn(
