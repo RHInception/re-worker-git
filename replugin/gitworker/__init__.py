@@ -177,23 +177,25 @@ class GitWorker(Worker):
                 raise GitWorkerError(
                     'No valid subcommand given. Nothing to do!')
 
+            cmd_method = None
             if subcommand == 'CherryPickMerge':
-                self.app_logger.info(
-                    'Executing subcommand %s for correlation_id %s' % (
-                        subcommand, corr_id))
-                # Tell the FSM that we're starting now
-                self.send(
-                    properties.reply_to,
-                    corr_id,
-                    {'status': 'started'},
-                    exchange=''
-                )
-                result = self.cherry_pick_merge(body, corr_id, output)
+                cmd_method = self.cherry_pick_merge
+#            elif subcommand == 'Push':
+#                cmd_method = self.drop_table
             else:
                 self.app_logger.warn(
-                    'Could not the implementation of subcommand %s' % (
+                    'Could not find the implementation of subcommand %s' % (
                         subcommand))
                 raise GitWorkerError('No subcommand implementation')
+
+            result = cmd_method(body, corr_id, output)
+            # Send results back
+            self.send(
+                properties.reply_to,
+                corr_id,
+                {'status': 'completed', 'data': result},
+                exchange=''
+            )
 
             # Send results back
             self.send(
