@@ -107,7 +107,6 @@ class TestGitWorker(TestCase):
             assert worker._delete_workspace(workspace) is None
             assert os.path.isdir(workspace) is False
 
-
     def test_bad_command(self):
         """
         If a bad command is sent the worker should fail.
@@ -213,7 +212,6 @@ class TestGitWorker(TestCase):
             print worker.send.call_args[0][2]['data'], expected_data
             assert worker.send.call_args[0][2]['data'] == expected_data
 
-
     def test_cherrypickmerge_with_git_fix(self):
         """
         Verifies cherrypickmerge command works when run_git_fix is True
@@ -286,4 +284,70 @@ class TestGitWorker(TestCase):
             _sp.Popen.assert_called_once()
             _sp.Popen.call_args[0][0] == ['/usr/bin/git-fix']
             assert worker.send.call_args[0][2]['status'] == 'completed'
+            assert worker.send.call_args[0][2]['data'] == expected_data
+
+    def test_merge(self):
+        """
+        Verifies merge command works as expected.
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.gitworker.GitWorker.notify'),
+                mock.patch('replugin.gitworker.GitWorker.send'),
+                mock.patch('replugin.gitworker.subprocess'),
+                mock.patch('replugin.gitworker.git')) as (_, _, _, _sp, _git):
+
+            worker = gitworker.GitWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "git",
+                    "subcommand": "Merge",
+                    "from_branch": "from",
+                    "to_branch": "to",
+                    "repo": "https://127.0.0.1/somerepo.git",
+                }
+            }
+
+            _git.Repo().commit.return_value = mock.MagicMock(hexsha='0987654321')
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            expected_data = {
+                "from_branch": "from",
+                "to_branch": "to",
+                "commit": "0987654321"
+            }
+
+            # There should be a clone
+            _git.cmd.Git().clone.assert_called_once_with(
+                "https://127.0.0.1/somerepo.git",
+                mock.ANY)  # we can't tell what the workspace will be
+            # There should be 1 checkout
+            assert _git.Repo().git.checkout.call_count == 1
+            # There should be 2 fetches
+            assert _git.Repo().git.fetch.call_count == 2
+
+            # There should be a squash merge
+            _git.Repo().git.merge.assert_called_once_with('origin/from')
+            # AND push
+            _git.Repo().git.push.assert_called_once()
+
+            # we should have no subprocess calls
+            assert _sp.Popen.call_count == 0
+
+            assert self.app_logger.error.call_count == 0
+            assert worker.send.call_args[0][2]['status'] == 'completed'
+            print worker.send.call_args[0][2]['data'], expected_data
             assert worker.send.call_args[0][2]['data'] == expected_data

@@ -40,7 +40,7 @@ class GitWorker(Worker):
     """
 
     #: allowed subcommands
-    subcommands = ('CherryPickMerge', )
+    subcommands = ('CherryPickMerge', 'Merge')
     dynamic = []
 
     # Subcommand methods
@@ -131,6 +131,63 @@ class GitWorker(Worker):
         except git.GitCommandError, gce:
             raise GitWorkerError('Git error: %s' % gce)
 
+    def merge(self, body, corr_id, output):
+        """
+        Merge a branch into another branch.
+        """
+        params = body.get('parameters', {})
+
+        try:
+            from_branch = params['from_branch']
+            to_branch = params['to_branch']
+            repo = params['repo']
+
+            msg = 'Attempting to merge %s to %s' % (from_branch, to_branch)
+            self.app_logger.info(msg)
+            output.info(msg)
+
+            # Create a workspace
+            workspace = self._create_workspace()
+            # Create a git command wrapper
+            gitcmd = git.cmd.Git(workspace)
+            # Clone
+            output.info('Cloning %s' % repo)
+            gitcmd.clone(repo, workspace)
+            local_repo = git.Repo(workspace)
+            output.info('Checking out branch %s to merge into' % to_branch)
+            # Make sure we have the data from the server
+            local_repo.git.fetch('origin', from_branch)
+            local_repo.git.fetch('origin', to_branch)
+            # Move onto the branch
+            local_repo.git.checkout(to_branch)
+            # Do the work
+            local_repo.git.merge("origin/" + from_branch)
+            output.info('Merged %s to %s successfully' % (
+                from_branch, to_branch))
+            self.app_logger.info("Merged %s to %s successfully" % (
+                from_branch, to_branch))
+
+            result_data = {
+                'commit': local_repo.commit().hexsha,
+                'from_branch': from_branch,
+                'to_branch': to_branch,
+            }
+
+            local_repo.git.push("origin", to_branch, force=False)
+
+            # Remove the workspace after work is done (unless
+            # keep_workspace is True)
+            if not params.get('keep_workspace', False):
+                self._delete_workspace(workspace)
+                output.info('Cleaning up workspace.')
+
+            self.app_logger.info('Cherry picking succeeded.')
+            return {'status': 'completed', 'data': result_data}
+        except KeyError, ke:
+            raise GitWorkerError('Missing input %s' % ke)
+        except git.GitCommandError, gce:
+            raise GitWorkerError('Git error: %s' % gce)
+
     def _create_workspace(self):
         """
         Creates a workspace to clone in.
@@ -180,8 +237,8 @@ class GitWorker(Worker):
             cmd_method = None
             if subcommand == 'CherryPickMerge':
                 cmd_method = self.cherry_pick_merge
-#            elif subcommand == 'Push':
-#                cmd_method = self.drop_table
+            elif subcommand == 'Merge':
+                cmd_method = self.merge
             else:
                 self.app_logger.warn(
                     'Could not find the implementation of subcommand %s' % (
