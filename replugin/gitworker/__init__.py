@@ -181,7 +181,7 @@ class GitWorker(Worker):
                 self._delete_workspace(workspace)
                 output.info('Cleaning up workspace.')
 
-            self.app_logger.info('Cherry picking succeeded.')
+            self.app_logger.info('Merge succeeded.')
             return {'status': 'completed', 'data': result_data}
         except KeyError, ke:
             raise GitWorkerError('Missing input %s' % ke)
