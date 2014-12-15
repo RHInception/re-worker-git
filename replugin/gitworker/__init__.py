@@ -69,7 +69,13 @@ class GitWorker(Worker):
             gitcmd = git.cmd.Git(workspace)
 
             # Clone
-            output.info('Cloning %s' % repo)
+            location_type = 'local'
+            if (
+                    repo.startswith('http://') or
+                    repo.startswith('https://') or
+                    repo.startswith('ssh://')):
+                location_type = 'remote'
+            output.info('Cloning %s %s' % (location_type, repo))
             gitcmd.clone(repo, workspace)
             local_repo = git.Repo(workspace)
             output.info('Checking out branch %s for work' % temp_branch)
@@ -151,7 +157,13 @@ class GitWorker(Worker):
             # Create a git command wrapper
             gitcmd = git.cmd.Git(workspace)
             # Clone
-            output.info('Cloning %s' % repo)
+            location_type = 'local'
+            if (
+                    repo.startswith('http://') or
+                    repo.startswith('https://') or
+                    repo.startswith('ssh://')):
+                location_type = 'remote'
+            output.info('Cloning %s %s' % (location_type, repo))
             gitcmd.clone(repo, workspace)
             local_repo = git.Repo(workspace)
             output.info('Checking out branch %s to merge into' % to_branch)

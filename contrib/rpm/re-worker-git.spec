@@ -10,7 +10,7 @@
 Name: re-worker-git
 Summary: Basic git worker for Release Engine
 Version: 0.0.3
-Release: 2%{?dist}
+Release: 3%{?dist}
 
 Group: Applications/System
 License: AGPLv3
@@ -42,6 +42,9 @@ history fixing.
 
 
 %changelog
+* Mon Dec 15 2014 Steve Milner <stevem@gnulinux.net> - 0.0.3-3
+- Added location_type to note if the repo is believed to be local or remote.
+
 * Fri Dec 12 2014 Steve Milner <stevem@gnulinux.net> - 0.0.3-2
 - Fixed log entry in Merge.
 
